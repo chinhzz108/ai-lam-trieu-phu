@@ -1,73 +1,88 @@
 // ==================================================== //
-// ==== This file contains all the functions that === //
-// ==== handles the answer ========================= //
-// ================================================ //
+// ==== Xử lý chọn đáp án                            === //
+// ==================================================== //
 
-
-// ==== Audio/Sounds ==== //
 import {
-  letsPlayAudio,
-  selectedAnswerAudio,
-  correctAnswerAudio,
-  wrongAnswerAudio
+  playSelectAnswer,
+  playAnsNow,
+  playCorrectAnswer,
+  playWrongAnswer,
+  pauseBgMusic,
+  resumeBgMusic,
 } from "./audio.js";
 
-import {
-  displayNextQuestion
-} from "./question.js";
+import { displayNextQuestion } from "./question.js";
+import { endGame, advancePrize } from "./gameState.js";
 
+let answering = false;
 
-// ==== Function to introduce delay ==== //
-const delay = (ms) => {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-};
-
-// ================================= //
-// ==== Handle Answer Function ==== //
-// =============================== //
 async function handleAnswer(e) {
-  // console.log("🚀 ~ handleAnswer is running", handleAnswer);
-  
-  // ==== Get audio boolean from localStorage ==== //
-  let playAudio = JSON.parse(localStorage.getItem('playAudio'));
-  
-  const selectedAnswer = e.target.dataset.id;
-  let options = document.getElementsByClassName("options");
-  options = Array.from(options);
-  const currentQuestion = JSON.parse(localStorage.getItem('currentQuestion'))
-  const currentAnswer = currentQuestion.correct;
+  if (answering) return;
+  answering = true;
 
-  if (playAudio) {
-    letsPlayAudio.pause();
-    selectedAnswerAudio.play();
-  }
-  options[selectedAnswer].classList.add("selected-answer");
+  try {
+    const selectedAnswer = Number(e.currentTarget.dataset.id);
+    const options = Array.from(document.getElementsByClassName("options"));
+    const currentQuestion = JSON.parse(localStorage.getItem("currentQuestion"));
 
-  await delay(2000);
-  
-  // console.log(playAudio)
+    if (!currentQuestion) {
+      alert("Chưa có câu hỏi. Bấm Let's Play lại.");
+      answering = false;
+      return;
+    }
 
-  if (selectedAnswer != currentAnswer) {
-    options[selectedAnswer].classList.replace(
-      "selected-answer",
-      "wrong-answer"
-    );
-    selectedAnswerAudio.pause();
-    if (playAudio) wrongAnswerAudio.play();
-    await delay(2000);
-    endGame();
-  } else {
-    options[selectedAnswer].classList.remove("selected-answer");
-    options[selectedAnswer].classList.add("correct-answer");
-    selectedAnswerAudio.pause();
-    if (playAudio) correctAnswerAudio.play();
-    await delay(6000);
-    displayNextQuestion();
+    const currentAnswer = Number(currentQuestion.correct);
+
+    options.forEach((opt) => {
+      opt.style.pointerEvents = "none";
+    });
+
+    pauseBgMusic();
+    options[selectedAnswer]?.classList.add("selected-answer");
+
+    // LVS: "Bạn chọn đáp án A/B/C/D" (chữ bạn chọn)
+    await playSelectAnswer(selectedAnswer);
+
+    if (selectedAnswer !== currentAnswer) {
+      options[selectedAnswer]?.classList.replace(
+        "selected-answer",
+        "wrong-answer"
+      );
+      // Highlight đáp án đúng trên UI
+      if (options[currentAnswer]) {
+        options[currentAnswer].classList.add("correct-answer");
+      }
+      // LVS lose_a/b/c/d = "Đáp án đúng là A/B/C/D"
+      // → phải theo CHỮ ĐÚNG (currentAnswer), không phải chữ bạn chọn
+      await playWrongAnswer(currentAnswer);
+      answering = false;
+      // endGame(false, { skipLoseVoice: true }) vì vừa phát lose_X rồi
+      await endGame(false, { skipLoseVoice: true });
+      return;
+    }
+
+    // Đúng: nhịp hồi hộp rồi LVS chúc mừng đúng chữ đã chọn
+    await playAnsNow();
+    options[selectedAnswer]?.classList.remove("selected-answer");
+    options[selectedAnswer]?.classList.add("correct-answer");
+    await playCorrectAnswer(selectedAnswer);
+
+    const hasNext = await advancePrize();
+    answering = false;
+
+    if (hasNext) {
+      resumeBgMusic();
+      options.forEach((opt) => {
+        opt.style.pointerEvents = "";
+        opt.style.visibility = "visible";
+        delete opt.dataset.hidden5050;
+      });
+      await displayNextQuestion();
+    }
+  } catch (err) {
+    console.error("handleAnswer lỗi:", err);
+    answering = false;
   }
 }
 
-export {
-  handleAnswer
-}
+export { handleAnswer };

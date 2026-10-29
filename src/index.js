@@ -12,7 +12,8 @@
 
 // ==== Get Audios/Sounds ==== //
 import {
-  letsPlayAudio
+  stopAllAudio,
+  resumeBgMusic,
 } from "./audio.js";
 
 // ==== Get Buttons ===== //
@@ -24,18 +25,57 @@ import {
 // ==== Get Games State Functions ==== //
 import {
   startGame,
-  endGame
 } from "./gameState.js";
+
+import {
+  renderPrizeLadder
+} from "./prizes.js";
+
+import {
+  setAnswerHandler,
+} from "./question.js";
+
+import {
+  setQuestionIndex,
+} from "./state.js";
+
+import {
+  handleAnswer,
+} from "./answer.js";
+
+import {
+  initLifelines,
+} from "./lifelines.js";
 
 
 // ==== Initialize boolean for audio control ==== //
 let playAudio = true;
 localStorage.setItem('playAudio', JSON.stringify(playAudio));
 
+// Đặt lại trạng thái câu về 0 khi vừa load / F5 lại trang
+setQuestionIndex(0);
+try {
+  localStorage.removeItem("currentQuestion");
+} catch {}
+
+// Gắn handler chọn đáp án (tránh circular import)
+setAnswerHandler(handleAnswer);
+
+// 50:50 / Gọi điện / Hỏi khán giả
+initLifelines();
+
+// Vẽ thang tiền VND ngay khi load trang
+renderPrizeLadder(0);
+
 // ======================================================== //
 // === Start game when user clicks [Let's Play] button === //
 // ====================================================== //
-letsPlayBtn.addEventListener("click", startGame);
+letsPlayBtn.addEventListener("click", () => {
+  startGame().catch((err) => {
+    console.error(err);
+    alert("Không start được game: " + err.message);
+  });
+});
 
 
 // ======================== //
@@ -45,22 +85,17 @@ let mute = document.querySelector(".mute");
 let unmute = document.querySelector(".unmute");
 
 audioBtnControl.addEventListener("click", () => {
-  // ==== Get audio boolean from localStorage ==== //
   playAudio = JSON.parse(localStorage.getItem('playAudio'));
-  
-  // ==== Toggle/Revert/Change audio boolean ==== //
-  playAudio = !playAudio
-
-  // ==== Save toggled/reverted/changed audio boolean to localStorage ==== //
+  playAudio = !playAudio;
   localStorage.setItem('playAudio', JSON.stringify(playAudio));
 
   if (playAudio) {
-    letsPlayAudio.play();
     unmute.classList.add("hidden");
     mute.classList.remove("hidden");
+    resumeBgMusic();
   } else {
-    letsPlayAudio.pause();
     unmute.classList.remove("hidden");
     mute.classList.add("hidden");
+    stopAllAudio();
   }
 });

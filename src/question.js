@@ -1,122 +1,123 @@
 // ==================================================== //
-// ==== This file contains all question functions  === //
-// ================================================== //
+// ==== Hiển thị câu hỏi (dữ liệu local, không fetch) === //
+// ==================================================== //
 
-// ==== Audios/Sounds ==== //
 import {
-  letsPlayAudio,
+  playQuestionIntro,
+  pauseBgMusic,
+  resumeBgMusic,
 } from "./audio.js";
 
-// ==== Game State Functions ==== //
-import {
-  resetState
-} from "./gameState.js";
+import { getQuestionIndex } from "./state.js";
+import { getDeckQuestion } from "./deck.js";
+import { clearHiddenForNewQuestion } from "./lifelines.js";
 
-import {
-  handleAnswer
-} from "./answer.js";
+// Callback chọn đáp án — gắn từ index.js (tránh circular import)
+let onAnswerClick = null;
 
-// ==== Get audio boolean from localStorage ==== //
-let playAudio = JSON.parse(localStorage.getItem('playAudio'));
-
-// ==== Get question from localStorage if any exist ==== //
-let currentQuestion = JSON.parse(localStorage.getItem('currentQuestion'));
-
-// =================================================== //
-// ==== This function displays the next question ==== //
-// ================================================= //
-async function displayNextQuestion() {
-  // console.log("🚀 ~ displayNextQuestion is running", displayNextQuestion);
-  resetState();
-  if (playAudio) letsPlayAudio.play();
-  const question = await getRandomQuestion();
-  currentQuestion = question;
-  
-  // ==== Save current question to localStorage ==== //
-  localStorage.setItem('currentQuestion', JSON.stringify(currentQuestion));
-  // console.log(JSON.parse(localStorage.getItem('currentQuestion')))
-  displayQuestion(currentQuestion);
+function setAnswerHandler(handler) {
+  onAnswerClick = handler;
 }
 
+function resetOptionStyles() {
+  const options = document.getElementsByClassName("options");
+  for (let i = 0; i < options.length; i++) {
+    options[i].classList.remove(
+      "selected-answer",
+      "correct-answer",
+      "wrong-answer"
+    );
+    options[i].style.pointerEvents = "";
+    options[i].style.visibility = "visible";
+    delete options[i].dataset.hidden5050;
+  }
+}
 
-// ============================================== //
-// ==== This function displays the question ==== //
-// ============================================ //
+function getCurrentQuestion() {
+  const index = getQuestionIndex();
+  // Lấy từ bộ 15 câu đã bốc random cho ván này
+  return getDeckQuestion(index);
+}
+
 function displayQuestion(questionObject) {
-  // console.log("🚀 ~ displayQuestion is running", displayQuestion);
-  // console.log(currentQuestion);
+  if (!questionObject) {
+    console.error("displayQuestion: không có dữ liệu câu hỏi");
+    return;
+  }
 
   const questionCard = document.getElementById("question-card");
-  questionCard.innerHTML = `<h2>${questionObject.question}</h2>`;
+  if (!questionCard) {
+    console.error("Không tìm thấy #question-card");
+    return;
+  }
 
-  const option1 = document.getElementById("option-one");
-  const option2 = document.getElementById("option-two");
-  const option3 = document.getElementById("option-three");
-  const option4 = document.getElementById("option-four");
+  questionCard.innerHTML = `<h2 class="question-text text-center">${questionObject.question}</h2>`;
 
-  option1.innerHTML = `
-    <span class="text-orange font-bold mr-1">A:</span>
-    <span>${questionObject.content[0]}</span>`;
-  option2.innerHTML = `
-    <span class="text-orange font-bold mr-1">B:</span>
-    <span>${questionObject.content[1]}</span>`;
-  option3.innerHTML = `
-    <span class="text-orange font-bold mr-1">C:</span>
-    <span>${questionObject.content[2]}</span>`;
-  option4.innerHTML = `
-    <span class="text-orange font-bold mr-1">D:</span>
-    <span>${questionObject.content[3]}</span>`;
+  const optionIds = ["option-one", "option-two", "option-three", "option-four"];
+  const labels = ["A", "B", "C", "D"];
 
-  // prepare options for click
-  let options = document.getElementsByClassName("options");
-  options = Array.from(options);
-  options.forEach((option) => {
-    option.addEventListener("click", handleAnswer);
+  optionIds.forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+
+    const fresh = el.cloneNode(false);
+    fresh.dataset.id = String(i);
+    fresh.id = id;
+    fresh.className =
+      "options rounded border-4 border-border p-3 sm:p-4 w-full hover:cursor-pointer";
+    fresh.style.pointerEvents = "";
+    fresh.style.visibility = "visible";
+    delete fresh.dataset.hidden5050;
+    fresh.innerHTML = `
+      <span class="option-label text-orange font-bold mr-2">${labels[i]}:</span>
+      <span class="option-text">${questionObject.content[i]}</span>`;
+    if (onAnswerClick) {
+      fresh.addEventListener("click", onAnswerClick);
+    }
+    el.replaceWith(fresh);
   });
 }
 
+/**
+ * Hiện câu hỏi trên màn hình + intro LVS "Câu hỏi số N" (không TTS đọc đề).
+ * @param {boolean} skipVoice - nếu true thì chỉ render UI câu hỏi, không phát âm thanh intro
+ */
+async function displayNextQuestion(skipVoice = false) {
+  resetOptionStyles();
+  clearHiddenForNewQuestion();
 
-// =============================================== //
-// ==== Get a random question from the array ==== //
-// ============================================ //
-async function getRandomQuestion() {
-  const questions = await mergeQuestionSets();
-  const randomIndex = Math.floor(Math.random() * questions.length);
+  const question = getCurrentQuestion();
+  if (!question) {
+    console.error("Không tìm thấy câu hỏi index=", getQuestionIndex());
+    const card = document.getElementById("question-card");
+    if (card) {
+      card.innerHTML =
+        '<h2 class="text-center text-red-400">Lỗi: không tải được câu hỏi. F5 lại trang.</h2>';
+    }
+    return;
+  }
 
-  return questions[randomIndex];
-}
+  localStorage.setItem("currentQuestion", JSON.stringify(question));
+  displayQuestion(question);
 
+  if (skipVoice) return;
 
-// =================================================== //
-// ==== Get questions(Get the data from the URL) ==== //
-// ================================================= //
-async function getQuestions() {
-  const URL =
-    "https://raw.githubusercontent.com/aaronnech/Who-Wants-to-Be-a-Millionaire/master/questions.json";
+  const level = getQuestionIndex() + 1;
 
   try {
-    const response = await fetch(URL);
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.log(error);
+    // Chỉ intro "Câu hỏi số N..." — không đọc nội dung đề
+    pauseBgMusic();
+    await playQuestionIntro(level);
+    resumeBgMusic();
+  } catch (err) {
+    console.warn("Audio lỗi (vẫn chơi được):", err);
+    resumeBgMusic();
   }
-}
-
-
-// ===================================================== //
-// ==== Merge all the question sets into one array ==== //
-// =================================================== //
-async function mergeQuestionSets() {
-  const data = await getQuestions();
-  let questions = [];
-  for (let i = 0; i < data.games.length; i++) {
-    questions = questions.concat(data.games[i].questions);
-  }
-
-  return questions;
 }
 
 export {
-  displayNextQuestion
-}
+  displayNextQuestion,
+  displayQuestion,
+  getCurrentQuestion,
+  setAnswerHandler,
+};
